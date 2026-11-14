@@ -56,55 +56,98 @@ public class MainActivity extends Activity {
         button("Saved interviews", this::history);
         button("Voice Clone Studio", this::studio);
     }
+    static final String[] BASELINE = {
+        "Please state your full name.",
+        "What month is it currently?",
+        "Describe what you can see in this room.",
+        "What did you eat or drink most recently?",
+        "Is your first name [insert correct name]?",
+        "Is your first name [insert an incorrect name]?",
+        "Please say 'yes' in your normal speaking voice.",
+        "Please say 'no' in your normal speaking voice.",
+        "For this practice only, knowingly give an incorrect answer: Is the sky normally green?",
+        "Describe a familiar daily activity in two sentences."
+    };
+    String interviewName = "";
+    String sessionId = "";
+    int step = 0;
+    java.util.ArrayList<String> detectionQuestions = new java.util.ArrayList<>();
     void newInterview() {
-        page("New interview");
-        person = field("Interviewed person's name");
-        question = field("Question to ask");
-        category = new Spinner(this);
-        ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-            new String[]{"Control question","Detection question"});
-        category.setAdapter(a); layout.addView(category);
-        status = label("Ready to record. Obtain the speaker's consent.");
-        button("Start recording", () -> {
-            if (recording) { status.setText("Stop the current recording first."); return; }
-            if (person.getText().toString().trim().isEmpty() || question.getText().toString().trim().isEmpty()) {
-                status.setText("Enter a name and question."); return;
-            }
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},1);
-                status.setText("Allow microphone access, then tap Start again."); return;
-            }
-            try {
-                currentName = person.getText().toString().trim();
-                currentQuestion = question.getText().toString().trim();
-                currentType = category.getSelectedItem().toString();
-                File dir = new File(getFilesDir(),"recordings"); dir.mkdirs();
-                currentFile = new File(dir, "answer_"+System.currentTimeMillis()+".m4a");
-                recorder = new MediaRecorder();
-                recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-                recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-                recorder.setOutputFile(currentFile.getAbsolutePath());
-                recorder.prepare(); recorder.start(); recording = true;
-                status.setText("Recording... tap Stop when finished.");
-            } catch (Exception e) { status.setText("Recording error: "+e.getMessage()); releaseRecorder(); }
+        page("Start guided interview");
+        EditText name = field("Interviewed person's name");
+        label("The first 10 prompts establish speech samples, not a scientifically validated lie-detection baseline. The speaker should know when a practice answer is intentionally false.");
+        button("Begin 10-question baseline", () -> {
+            if(name.getText().toString().trim().isEmpty()) { Toast.makeText(this,"Enter a name",Toast.LENGTH_SHORT).show();return; }
+            interviewName=name.getText().toString().trim();
+            sessionId=String.valueOf(System.currentTimeMillis());
+            step=0; detectionQuestions.clear(); showGuidedQuestion();
         });
-        button("Stop and save answer", () -> {
-            if (!recording) { status.setText("No recording in progress."); return; }
-            try {
-                recorder.stop(); releaseRecorder();
-                JSONObject item = new JSONObject();
-                item.put("person",currentName); item.put("question",currentQuestion);
-                item.put("type",currentType); item.put("file",currentFile.getAbsolutePath());
-                item.put("date",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).format(new Date()));
-                JSONArray all = readHistory(); all.put(item);
-                getPreferences(0).edit().putString("interviews",all.toString()).apply();
-                status.setText("Saved answer for "+currentName);
-                question.setText("");
-            } catch (Exception e) { releaseRecorder(); status.setText("Could not save recording: "+e.getMessage()); }
+        button("Home",this::showHome);
+    }
+    void showGuidedQuestion() {
+        if(recording) { Toast.makeText(this,"Stop recording first",Toast.LENGTH_SHORT).show();return; }
+        boolean baseline=step<BASELINE.length;
+        int customIndex=step-BASELINE.length;
+        if(!baseline && customIndex>=detectionQuestions.size()) { addDetectionQuestion();return; }
+        String prompt=baseline?BASELINE[step]:detectionQuestions.get(customIndex);
+        String type=baseline?(step==8?"Assisted practice false answer":step==5?"Known false / verify":step==4?"Known true / verify":"Neutral / speech sample"):"Detection question";
+        page((baseline?"Baseline "+(step+1)+"/10":"Personal question "+(customIndex+1))+" • "+interviewName);
+        label("Type: "+type);
+        label(prompt);
+        if(baseline && (step==4 || step==5)) label("Confirm the statement's truth or falsity with the participant before recording.");
+        status=label("Record the answer, then save to continue.");
+        button("Start recording",()->startGuidedRecording(prompt,type));
+        button("Stop, save and next",()->stopGuidedRecording());
+        if(!baseline) button("Add another personal question",()->{if(recording){status.setText("Stop recording first.");return;}addDetectionQuestion();});
+        button("Finish interview",()->{if(recording){status.setText("Stop recording first.");return;}showHome();});
+    }
+    void addDetectionQuestion() {
+        page("Individual questions • "+interviewName);
+        label("Baseline complete. Enter a question specific to this person.");
+        EditText q=field("Question");
+        button("Add and record question",()->{
+            String value=q.getText().toString().trim();
+            if(value.isEmpty()){Toast.makeText(this,"Enter a question",Toast.LENGTH_SHORT).show();return;}
+            detectionQuestions.add(value);
+            step=BASELINE.length+detectionQuestions.size()-1;
+            showGuidedQuestion();
         });
-        button("View history", this::history);
-        button("Home", this::showHome);
+        button("Finish interview",this::showHome);
+    }
+    void startGuidedRecording(String prompt,String type) {
+        if(recording){status.setText("Already recording.");return;}
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},1);
+            status.setText("Grant microphone permission, then tap Start again.");return;
+        }
+        try {
+            currentName=interviewName;currentQuestion=prompt;currentType=type;
+            File dir=new File(getFilesDir(),"recordings");dir.mkdirs();
+            currentFile=new File(dir,"answer_"+System.currentTimeMillis()+".m4a");
+            recorder=new MediaRecorder();
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            recorder.setOutputFile(currentFile.getAbsolutePath());
+            recorder.prepare();recorder.start();recording=true;
+            status.setText("Recording answer...");
+        } catch(Exception e){releaseRecorder();status.setText("Recording error: "+e.getMessage());}
+    }
+    void stopGuidedRecording() {
+        if(!recording){status.setText("Start a recording first.");return;}
+        try {
+            recorder.stop();releaseRecorder();
+            JSONObject item=new JSONObject();
+            item.put("person",currentName);item.put("question",currentQuestion);
+            item.put("type",currentType);item.put("file",currentFile.getAbsolutePath());
+            item.put("session",sessionId);item.put("sequence",step+1);
+            item.put("date",new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).format(new Date()));
+            JSONArray all=readHistory();all.put(item);
+            getPreferences(0).edit().putString("interviews",all.toString()).apply();
+            step++;
+            if(step==BASELINE.length || step>BASELINE.length+detectionQuestions.size()-1) addDetectionQuestion();
+            else showGuidedQuestion();
+        } catch(Exception e){releaseRecorder();status.setText("Unable to save answer: "+e.getMessage());}
     }
     void releaseRecorder() {
         recording = false;
