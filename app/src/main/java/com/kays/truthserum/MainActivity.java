@@ -193,8 +193,8 @@ public final class MainActivity extends Activity {
                 ?" • Voice index "+item.optInt("index")+"%"
                 : " • "+item.optString("state","Pending");
             button((i+1)+". "+item.optString("question")+score,
-                ()->"recorded".equals(item.optString("state"))
-                    ? showResult(id,questionIndex) : showQuestion(id,questionIndex));
+                ()->{ if("recorded".equals(item.optString("state"))) showResult(id,questionIndex);
+                      else showQuestion(id,questionIndex); });
         }
         button("All saved interviews",this::history);
         button("Home",this::home);
