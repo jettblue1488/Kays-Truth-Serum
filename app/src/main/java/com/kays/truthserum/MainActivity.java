@@ -242,7 +242,10 @@ public final class MainActivity extends Activity {
     }
     private void editQuestion(String id,int index) {
         JSONObject session=store.get(id);
-        JSONObject item=session.getJSONArray("items").optJSONObject(index);
+        if(session==null)return;
+        JSONArray list=session.optJSONArray("items");
+        if(list==null)return;
+        JSONObject item=list.optJSONObject(index);
         if(item==null)return;
         page("EDIT PERSONAL QUESTION");
         EditText e=field("Question");e.setText(item.optString("question"));
