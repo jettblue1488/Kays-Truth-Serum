@@ -1,6 +1,6 @@
 # Kay's Truth Serum (Android)
 
-Version 0.2 includes a **direct target-question interview mode** and an **optional 10-prompt reference baseline**.
+Version 0.2.1 is a **side-by-side-installable build** for people who have an earlier APK installed with a different debug signing certificate. It uses Android application ID `com.kays.truthserum.v2` and appears as **Kay's Truth Serum 2** on the launcher. **Do not uninstall your previous version if you need its recordings.** This new installation does not automatically import previous interview histories; they remain in the older app.
 
 ## Use the interview
 1. Choose **New interview / Ask my questions** and enter the participant's name.
@@ -15,6 +15,6 @@ The percentage is a **custom, experimental measure of acoustic feature variabili
 The analyzer runs **offline on the phone** and processes up to the first 120 seconds of a recording. Record only with the speaker's knowledge and applicable consent.
 
 ## Build APK
-In GitHub, open **Actions → Build Kay's Truth Serum APK**, run the workflow on main (or use the most recent completed main build), and download its `Kays-Truth-Serum-debug-apk` artifact. Unzip it to obtain the Android APK.
+In GitHub, open **Actions → Build Kay's Truth Serum APK**, choose a successful main build, and download the `Kays-Truth-Serum-debug-apk` artifact. Unzip it to obtain `app-debug.apk`.
 
-**Note for updates:** Debug APKs generated on different GitHub Actions runners can have different signing certificates. If Android reports **App not installed** or **package conflicts**, an installed older build may have an incompatible signature. Uninstalling it can delete recordings and saved interview history. Back up important recordings before removing an older build. For reliable updates without data loss, the project needs a consistent release-signing certificate kept in GitHub Secrets.
+**Future updates:** GitHub Actions builds use a fresh debug signing certificate on clean runners. Even this side-by-side install cannot be updated seamlessly with another debug build signed by a different certificate. To preserve interview data across future app updates, configure consistent release signing using a securely stored signing key; never commit a private signing key to a public repository.
