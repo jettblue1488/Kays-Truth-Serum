@@ -30,6 +30,8 @@ public final class AudioAnalyzer {
         public double durationSeconds;
         public double speakingSeconds;
         public int pitchFrames;
+        public double rapidModulationPercent = -1;
+        public double pitchFluctuationPercent = -1;
     }
 
     private static final class Samples {
@@ -227,6 +229,12 @@ public final class AudioAnalyzer {
 
         result.loudnessVariationDb = standardDeviation(speechLevels);
         result.pitchAvailable = pitches.size() >= 5;
+        result.rapidModulationPercent = rapidAmplitudeModulation(audio.values, audio.count);
+        if (pitches.size() >= 6) {
+            double absoluteChange = 0;
+            for (int i = 1; i < pitches.size(); i++) absoluteChange += Math.abs(pitches.get(i) - pitches.get(i-1));
+            result.pitchFluctuationPercent = 100 * absoluteChange / ((pitches.size() - 1) * Math.max(1, average(pitches)));
+        }
         if (result.pitchAvailable) {
             result.pitchVariationPercent = 100.0 * standardDeviation(pitches)
                     / Math.max(1, average(pitches));
@@ -234,15 +242,75 @@ public final class AudioAnalyzer {
         // A 0–100 feature scale, NOT a probability or a validated stress classifier.
         double loudnessComponent = Math.min(1.0, result.loudnessVariationDb / 12.0);
         double pitchComponent = Math.min(1.0, result.pitchVariationPercent / 35.0);
-        double combined = result.pitchAvailable
-                ? 0.45 * loudnessComponent + 0.55 * pitchComponent
-                : loudnessComponent;
+        double modulationComponent = result.rapidModulationPercent < 0 ? 0
+                : Math.min(1.0, result.rapidModulationPercent / 45.0);
+        double combined;
+        if (result.pitchAvailable && result.rapidModulationPercent >= 0) {
+            combined = 0.30 * loudnessComponent + 0.35 * pitchComponent + 0.35 * modulationComponent;
+        } else if (result.pitchAvailable) {
+            combined = 0.45 * loudnessComponent + 0.55 * pitchComponent;
+        } else if (result.rapidModulationPercent >= 0) {
+            combined = 0.55 * loudnessComponent + 0.45 * modulationComponent;
+        } else {
+            combined = loudnessComponent;
+        }
         result.variabilityScore = (int) Math.round(100 * combined);
         result.usable = true;
-        result.message = result.pitchAvailable
-                ? "Experimental score from pitch and loudness changes."
-                : "Low-detail estimate from loudness changes only; pitch tracking was insufficient.";
+        result.message = "CVSA-inspired acoustic measurements of loudness, pitch and rapid amplitude modulation. These features cannot establish honesty, deception, or psychological stress.";
         return result;
+    }
+
+    /**
+     * Fraction of short-time (10ms) RMS-envelope variation in the 8-12 Hz band.
+     * A speech signal's rapid amplitude modulation IS NOT a validated marker of
+     * laryngeal microtremor, psychological stress, or lying. The measurement is
+     * sensitive to breathing, consonants, noise, clipping and room acoustics.
+     */
+    private static double rapidAmplitudeModulation(short[] samples, int count) {
+        final int hop = 80;
+        final int window = 100;
+        int frames = count / hop;
+        if (frames < window) return -1;
+        double[] envelope = new double[frames];
+        for (int f = 0; f < frames; f++) {
+            double power = 0;
+            for (int i = 0; i < hop; i++) {
+                double x = samples[f * hop + i] / 32768.0;
+                power += x*x;
+            }
+            envelope[f] = Math.sqrt(power / hop);
+        }
+        double summedBand = 0;
+        double summedPower = 0;
+        int validWindows = 0;
+        for (int start = 0; start + window <= frames; start += 50) {
+            double mean = 0;
+            for (int i = 0; i < window; i++) mean += envelope[start+i];
+            mean /= window;
+            if (mean < 0.002) continue;
+            double total = 0;
+            for (int i = 0; i < window; i++) {
+                double centered = envelope[start+i] - mean;
+                total += centered * centered;
+            }
+            if (total < 1e-10) continue;
+            double band = 0;
+            for (int frequency = 8; frequency <= 12; frequency++) {
+                double real = 0, imag = 0;
+                for (int i = 0; i < window; i++) {
+                    double x = envelope[start+i] - mean;
+                    double phase = 2 * Math.PI * frequency * i / window;
+                    real += x * Math.cos(phase);
+                    imag += x * Math.sin(phase);
+                }
+                band += 2 * (real * real + imag * imag) / window;
+            }
+            summedBand += Math.min(total, band);
+            summedPower += total;
+            validWindows++;
+        }
+        return validWindows == 0 || summedPower == 0
+                ? -1 : 100.0 * Math.sqrt(Math.min(1, summedBand / summedPower));
     }
 
     private static double estimatePitch(short[] samples, int start) {
