@@ -6,7 +6,7 @@ MODEL_ID="sherpa-onnx-pocket-tts-int8-2026-01-26"
 BASE="https://github.com/k2-fsa/sherpa-onnx/releases/download"
 MODEL_URL="$BASE/tts-models/$MODEL_ID.tar.bz2"
 AAR_URL="$BASE/v1.13.4/sherpa-onnx-1.13.4.aar"
-MODEL_SHA="2f3b88823cbbb9bf0b2477ec8ae7b3fec417b3a87b6bb5f256dba66f2ad967cb"
+MODEL_SHA="f4da7c7bd465f7b91e89191487fe90504396a51d6f0bcf94d0787633e2657293"
 AAR_SHA="03f9c4df965f21c71269365a7951a7f23b5696fddd093fa318c80d65550ab780"
 TEMP="$(mktemp -d)"
 trap 'rm -rf "$TEMP"' EXIT
